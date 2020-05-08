@@ -1,35 +1,45 @@
-from bs4 import BeautifulSoup as bs
-import os
-import re
-import pandas as ps
 # -*- coding: utf-8 -*-
+import pandas as ps
+from bs4 import BeautifulSoup as bs
+import matplotlib.pyplot as plt
+from nltk import sentiment
+import nltk
 
-def run():
-    #cd to where the data resides
-    #os.chdir('/home/afollette/jupyter_notebooks/beautifulSoup/')
-    os.mkdir('builtExperiences')
-    parseHtml()
-    #StopWords  should be in working directory
-    stopList = generateStopList()
-    #change to build file to separate results from input
-    os.chdir('./builtExperiences')
-    frequency = collectWordFreq()
-    filteredFrequency = filterStopWords(frequency,stopList)
-    writeDFToFile(filteredFrequency)
+import os
+import sys
+import re
 
-def parseHtml():
+
+def run(dataDir):
+    if len(sys.argv) > 1:
+        if len(sys.argv) > 2 and sys.argv[2] is 'true':
+            parseHtml(sys.argv[1])
+        runAnalysis(sys.argv[1])
+    else:
+        print("Please pass data directory as argument")
+
+
+def runAnalysis(datadir):
+    os.chdir(datadir + '/builtExperiences')
+    analData = analyizeText()
+    writeDfToFile(analData)
+
+def parseHtml(dataDir):
+    print("Parsing html files")
+    os.chdir(dataDir)
+    mkExportDir()
     experienceFiles = os.listdir()
     for i in experienceFiles:
         fileIdMatch = re.search('[0-9]+', i)
         if fileIdMatch:
             fileId = fileIdMatch.group(0)
-        else :
+        else:
             fileId = i
         try:
             fileToParse = open(i, 'r', encoding='utf-8', errors='replace')
-            output = open('./builtExperiences/' + fileId,'w+')
+            output = open('./builtExperiences/' + fileId, 'w+')
             experience = bs(fileToParse, 'html.parser')
-            eBody= experience.body
+            eBody = experience.body
             report = eBody.find(class_="report-text-surround")
             if report:
                 tables = report.find_all('table')
@@ -42,41 +52,69 @@ def parseHtml():
         except:
             print("problem opening {}".format(i))
 
-def collectWordFreq():
-    fileList = os.listdir()
-    frequency = {}
-    for i in fileList:
-        try:
-            textDoc = open(i, 'r')
-            textStr = textDoc.read().lower()
-            word_matches = re.findall(r'\b[a-z]{3,20}\b', textStr)
 
-            for word in word_matches:
-                count = frequency.get(word,0)
-                frequency[word] = count + 1
-        except:
-            print("error proccessing {}".format(i))
-    return ps.DataFrame([frequency])
+def analyizeText():
+    print("Starting analysis on text")
+    fileList = os.listdir()
+    sia = sentiment.vader.SentimentIntensityAnalyzer()
+    scoreTotals = {}
+    scoringOutput = open('scoredSentences', 'w')
+    for i in fileList:
+        scoreTotals[i] = 0
+        sentTokens = tokenizeText(i)
+        for sentence in sentTokens:
+            sentenceScore = sia.polarity_scores(sentence)
+            scoringOutput.write("{} {}".format(sentence, str(sentence)))
+            scoreTotals[i] += sentenceScore.get('compound')
+
+        # filteredTokens = filterStopWords(textTokens, stopSet)
+        # print("error proccessing {}".format(i))
+    return ps.DataFrame(scoreTotals).transpose()
+
+def tokenizeText(file):
+    try:
+        textDoc = open(file, 'r')
+        textStr = textDoc.read().lower()
+        sentTokens = nltk.sent_tokenize(textStr, 'english')
+    except:
+        print("Error reading {}".format(file))
+        sentTokens = ""
+
+    return sentTokens
+
 
 def generateStopList():
-    stopListFile = open('stopWords', 'r', encoding='utf-8')
-    stopList = []
-    for line in stopListFile:
-        stopList = line.replace('\"', '').strip().split(',')
-    return stopList
+    return set(nltk.corpus.stopwords.words("english"))
+
 
 def filterStopWords(frequency, stopList):
     stopMatches = []
     for stopWord in stopList:
         # if 'the' in frequency.columns will return true
-        #but stopWord representing 'the' will not? WTF
+        # but stopWord representing 'the' will not? WTF
         if stopWord in frequency.columns:
             print("found stop word {}... deleting".format(stopWord))
             stopMatches.append(stopWord)
     return frequency.drop(columns=stopMatches).transpose
 
-def writeDFToFile(frequency):
+
+def writeDfToFile(frequency):
     frequency.to_csv('wordByFrequency')
+
+
+def mkExportDir():
+    if not os.path.isdir('./builtExperiences'):
+        os.mkdir('builtExperiences')
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        if len(sys.argv) > 2 and sys.argv[2] is 'true':
+            parseHtml(sys.argv[1])
+
+        run(sys.argv[1])
+    else:
+        print("Please pass data directory as argument")
 
 if __name__  == "__main__":
     run()
