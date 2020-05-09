@@ -18,8 +18,6 @@ def run():
     writeDFToFile(filteredFrequency)
 
 def parseHtml():
-    #Set to the direc
-    os.mkdir('builtExperiences')
     experienceFiles = os.listdir()
     for i in experienceFiles:
         fileIdMatch = re.search('[0-9]+', i)
