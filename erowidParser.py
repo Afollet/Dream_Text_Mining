@@ -10,7 +10,7 @@ import sys
 import re
 
 
-def run(dataDir):
+def run():
     if len(sys.argv) > 1:
         if len(sys.argv) > 2 and sys.argv[2] is 'true':
             parseHtml(sys.argv[1])
@@ -62,14 +62,17 @@ def analyizeText():
     for i in fileList:
         scoreTotals[i] = 0
         sentTokens = tokenizeText(i)
+        tokenLen = len(sentTokens)
         for sentence in sentTokens:
             sentenceScore = sia.polarity_scores(sentence)
             scoringOutput.write("{} {}".format(sentence, str(sentence)))
             scoreTotals[i] += sentenceScore.get('compound')
+        if tokenLen > 1 :
+            scoreTotals[i] = (scoreTotals[i]/tokenLen)
 
         # filteredTokens = filterStopWords(textTokens, stopSet)
         # print("error proccessing {}".format(i))
-    return ps.DataFrame(scoreTotals).transpose()
+    return ps.DataFrame([scoreTotals]).transpose()
 
 def tokenizeText(file):
     try:
@@ -105,16 +108,6 @@ def writeDfToFile(frequency):
 def mkExportDir():
     if not os.path.isdir('./builtExperiences'):
         os.mkdir('builtExperiences')
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        if len(sys.argv) > 2 and sys.argv[2] is 'true':
-            parseHtml(sys.argv[1])
-
-        run(sys.argv[1])
-    else:
-        print("Please pass data directory as argument")
 
 if __name__  == "__main__":
     run()
