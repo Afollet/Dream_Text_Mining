@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import pandas as ps
+from statistics import mean
 from bs4 import BeautifulSoup as bs
-import matplotlib.pyplot as plt
 from nltk import sentiment
+from nltk.stem.wordnet import WordNetLemmatizer
 import nltk
 
 import os
@@ -54,51 +55,42 @@ def parseHtml(dataDir):
 
 
 def analyizeText():
-    print("Starting analysis on text")
-    fileList = os.listdir()
-    sia = sentiment.vader.SentimentIntensityAnalyzer()
-    scoreTotals = {}
-    scoringOutput = open('scoredSentences', 'w')
-    for i in fileList:
-        scoreTotals[i] = 0
-        sentTokens = tokenizeText(i)
-        tokenLen = len(sentTokens)
-        for sentence in sentTokens:
-            sentenceScore = sia.polarity_scores(sentence)
-            scoringOutput.write("{} {}".format(sentence, str(sentence)))
-            scoreTotals[i] += sentenceScore.get('compound')
-        if tokenLen > 1 :
-            scoreTotals[i] = (scoreTotals[i]/tokenLen)
-
-        # filteredTokens = filterStopWords(textTokens, stopSet)
-        # print("error proccessing {}".format(i))
-    return ps.DataFrame([scoreTotals]).transpose()
+        fileList = os.listdir()
+        allScoreTotals = {}
+        for i in fileList:
+            sentTokens, wordTokens = tokenizeText(i)
+            allScoreTotals[i] = getAverageSentimentScore(sentTokens)
+            harmonizeWords(wordTokens)
+        return ps.DataFrame([allScoreTotals]).transpose()
 
 def tokenizeText(file):
     try:
         textDoc = open(file, 'r')
         textStr = textDoc.read().lower()
         sentTokens = nltk.sent_tokenize(textStr, 'english')
+        wordTokens = nltk.word_tokenize(textStr, 'english')
     except:
-        print("Error reading {}".format(file))
+        print("Error reading/tokenizing {}".format(file))
         sentTokens = ""
+        wordTokens = ""
 
-    return sentTokens
+    return sentTokens, wordTokens
+
+def getAverageSentimentScore(sentTokens):
+    sia = sentiment.vader.SentimentIntensityAnalyzer()
+    scoreTotals = []
+    for sentence in sentTokens:
+        sentenceScore = sia.polarity_scores(sentence)
+        scoreTotals.append(sentenceScore.get('compound'))
+    return mean(scoreTotals)
+
+def harmonizeWords(wordTokens):
+    taggedWords = nltk.pos_tag(wordTokens)
+    lem = WordNetLemmatizer()
 
 
 def generateStopList():
     return set(nltk.corpus.stopwords.words("english"))
-
-
-def filterStopWords(frequency, stopList):
-    stopMatches = []
-    for stopWord in stopList:
-        # if 'the' in frequency.columns will return true
-        # but stopWord representing 'the' will not? WTF
-        if stopWord in frequency.columns:
-            print("found stop word {}... deleting".format(stopWord))
-            stopMatches.append(stopWord)
-    return frequency.drop(columns=stopMatches).transpose
 
 
 def writeDfToFile(frequency):
