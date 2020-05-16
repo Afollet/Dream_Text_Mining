@@ -4,6 +4,8 @@ from statistics import mean
 from bs4 import BeautifulSoup as bs
 from nltk import sentiment
 from nltk.stem.wordnet import WordNetLemmatizer
+from nltk.corpus import wordnet
+import nltk.corpus
 import nltk
 
 import os
@@ -57,10 +59,12 @@ def parseHtml(dataDir):
 def analyizeText():
         fileList = os.listdir()
         allScoreTotals = {}
+        harmonizedWordFreq = {}
         for i in fileList:
             sentTokens, wordTokens = tokenizeText(i)
-            allScoreTotals[i] = getAverageSentimentScore(sentTokens)
-            harmonizeWords(wordTokens)
+            if sentTokens and wordTokens:
+                allScoreTotals[i] = getAverageSentimentScore(sentTokens)
+                harmonizeWords(wordTokens)
         return ps.DataFrame([allScoreTotals]).transpose()
 
 def tokenizeText(file):
@@ -78,7 +82,7 @@ def tokenizeText(file):
 
 def getAverageSentimentScore(sentTokens):
     sia = sentiment.vader.SentimentIntensityAnalyzer()
-    scoreTotals = []
+    scoreTotals = [0]
     for sentence in sentTokens:
         sentenceScore = sia.polarity_scores(sentence)
         scoreTotals.append(sentenceScore.get('compound'))
@@ -86,8 +90,14 @@ def getAverageSentimentScore(sentTokens):
 
 def harmonizeWords(wordTokens):
     taggedWords = nltk.pos_tag(wordTokens)
-    lem = WordNetLemmatizer()
+    pSeries = ps.Series(taggedWords)
+    hmzWords = pSeries.apply(lambda x: lemmatizeWords(x))
+    return hmzWords.value_counts()
 
+def lemmatizeWords(word):
+    lemmatizer = WordNetLemmatizer()
+    wordNetPos = get_wordnet_pos(word[1])
+    return lemmatizer.lemmatize(word[0], wordNetPos) if wordNetPos else word[0]
 
 def generateStopList():
     return set(nltk.corpus.stopwords.words("english"))
@@ -100,6 +110,20 @@ def writeDfToFile(frequency):
 def mkExportDir():
     if not os.path.isdir('./builtExperiences'):
         os.mkdir('builtExperiences')
+
+def get_wordnet_pos(treebank_tag):
+
+    if treebank_tag.startswith('J'):
+        return wordnet.ADJ
+    elif treebank_tag.startswith('V'):
+        return wordnet.VERB
+    elif treebank_tag.startswith('N'):
+        return wordnet.NOUN
+    elif treebank_tag.startswith('R'):
+        return wordnet.ADV
+    else:
+        return ''
+
 
 if __name__  == "__main__":
     run()
