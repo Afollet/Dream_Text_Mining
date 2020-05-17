@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup as bs
 from nltk import sentiment
 from nltk.stem.wordnet import WordNetLemmatizer
 from nltk.corpus import wordnet
+from nltk.corpus import stopwords
 import nltk.corpus
 import nltk
 
@@ -24,8 +25,9 @@ def run():
 
 def runAnalysis(datadir):
     os.chdir(datadir + '/builtExperiences')
-    analData = analyizeText()
-    writeDfToFile(analData)
+    sentimentAndMetadata, wordFreq = analyizeText()
+    writeDfToFile(sentimentAndMetadata, wordFreq)
+
 
 def parseHtml(dataDir):
     print("Parsing html files")
@@ -57,15 +59,25 @@ def parseHtml(dataDir):
 
 
 def analyizeText():
-        fileList = os.listdir()
-        allScoreTotals = {}
-        harmonizedWordFreq = {}
-        for i in fileList:
-            sentTokens, wordTokens = tokenizeText(i)
-            if sentTokens and wordTokens:
-                allScoreTotals[i] = getAverageSentimentScore(sentTokens)
-                harmonizeWords(wordTokens)
-        return ps.DataFrame([allScoreTotals]).transpose()
+    fileList = os.listdir()
+    totalSentimentScores = {}
+    totalWordFrequencies = {}
+    frequencyByExperience = {}
+    lengthOfExperience = {}
+    wordFrequencies = ps.Series()
+    for i in fileList:
+        sentTokens, wordTokens = tokenizeText(i)
+        if sentTokens and wordTokens:
+            totalSentimentScores[i] = getAverageSentimentScore(sentTokens)
+            normalizedWords = harmonizeWords(wordTokens)
+            normalizedAndFilteredWords = removeStopWords(normalizedWords)
+            totalWordFrequencies, localCount = generateWordFrequencies(normalizedAndFilteredWords, wordFrequencies)
+            frequencyByExperience[i] = localCount
+            lengthOfExperience[i] = len(localCount)
+
+    return ps.DataFrame([totalSentimentScores, totalWordFrequencies, frequencyByExperience, lengthOfExperience])\
+        , ps.DataFrame([totalWordFrequencies])
+
 
 def tokenizeText(file):
     try:
@@ -80,6 +92,7 @@ def tokenizeText(file):
 
     return sentTokens, wordTokens
 
+
 def getAverageSentimentScore(sentTokens):
     sia = sentiment.vader.SentimentIntensityAnalyzer()
     scoreTotals = [0]
@@ -88,31 +101,45 @@ def getAverageSentimentScore(sentTokens):
         scoreTotals.append(sentenceScore.get('compound'))
     return mean(scoreTotals)
 
+
 def harmonizeWords(wordTokens):
     taggedWords = nltk.pos_tag(wordTokens)
     pSeries = ps.Series(taggedWords)
     hmzWords = pSeries.apply(lambda x: lemmatizeWords(x))
-    return hmzWords.value_counts()
+    return hmzWords
+
 
 def lemmatizeWords(word):
     lemmatizer = WordNetLemmatizer()
     wordNetPos = get_wordnet_pos(word[1])
     return lemmatizer.lemmatize(word[0], wordNetPos) if wordNetPos else word[0]
 
+
+def removeStopWords(normalizedWords):
+    stops = set(stopwords.words('english)'))
+    return normalizedWords.drop(stops)
+
+
+def generateWordFrequencies(normalizedWords, wordFrequencies):
+    localCount = normalizedWords.value_counts()
+    return ps.concat([localCount, wordFrequencies]).sum(axis=1).to_dict(), localCount.to_dict()
+
+
 def generateStopList():
     return set(nltk.corpus.stopwords.words("english"))
 
 
-def writeDfToFile(frequency):
-    frequency.to_csv('wordByFrequency')
+def writeDfToFile(file1, file2):
+    file1.to_csv('sentimentAndMetadata')
+    file2.to_csv('wordByFrequency')
 
 
 def mkExportDir():
     if not os.path.isdir('./builtExperiences'):
         os.mkdir('builtExperiences')
 
-def get_wordnet_pos(treebank_tag):
 
+def get_wordnet_pos(treebank_tag):
     if treebank_tag.startswith('J'):
         return wordnet.ADJ
     elif treebank_tag.startswith('V'):
@@ -125,5 +152,5 @@ def get_wordnet_pos(treebank_tag):
         return ''
 
 
-if __name__  == "__main__":
+if __name__ == "__main__":
     run()
