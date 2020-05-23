@@ -12,7 +12,7 @@ import os
 import sys
 import logging
 from datetime import datetime
-
+from progressbar import bar
 
 
 def run():
@@ -24,35 +24,40 @@ def run():
 
 def runAnalysis(datadir):
     os.chdir(datadir + '/builtExperiences')
-    textAnalysisFrame = analyizeText()
-    writeDfToFile(textAnalysisFrame, 'textAnalysisFrame.tsv')
+    proccessText()
 
-
-def analyizeText():
+def proccessText():
     logging.info("Beginning analyis")
     startTime = datetime.now().microsecond
 
+    cache = []
+    counter = 0;
     fileList = os.listdir()
-    totalSentimentScores = {}
-    frequencyByExperience = {}
-    lengthOfExperience = {}
     for i in fileList:
-        print(".")
-        sentTokens, wordTokens = tokenizeText(i)
-        if sentTokens and wordTokens:
-            totalSentimentScores[i] = getAverageSentimentScore(sentTokens)
-            normalizedWords = harmonizeWords(wordTokens)
-            normalizedAndFilteredWords = removeStopWords(normalizedWords)
-            localCount = generateWordFrequencies(normalizedAndFilteredWords)
-            frequencyByExperience[i] = localCount
-            lengthOfExperience[i] = len(localCount)
+        totalSentimentScores, frequencyByExperience, lengthOfExperience = analyizeFile(i)
+        cache.append([totalSentimentScores, frequencyByExperience, lengthOfExperience])
+        print(totalSentimentScores, frequencyByExperience, lengthOfExperience)
+        counter += 1
+        if (counter % 100) == 0:
+            writeCacheToFile(cache, "analysis.tsv")
+            cache = []
 
     stopTime = datetime.now().microsecond
     logging.info("Main analysis done in {}".format(stopTime - startTime))
-    return ps.DataFrame([totalSentimentScores, frequencyByExperience, lengthOfExperience])
 
-def compileTotalFrequencies(wordFrequenciesFrame):
-    print("here I am")
+def analyizeFile(file):
+    totalSentimentScores = {}
+    frequencyByExperience = {}
+    lengthOfExperience = {}
+    sentTokens, wordTokens = tokenizeText(file)
+    if sentTokens and wordTokens:
+        totalSentimentScores[file] = getAverageSentimentScore(sentTokens)
+        normalizedWords = harmonizeWords(wordTokens)
+        normalizedAndFilteredWords = removeStopWords(normalizedWords)
+        localCount = generateWordFrequencies(normalizedAndFilteredWords)
+        frequencyByExperience[file] = localCount
+        lengthOfExperience[file] = len(localCount)
+    return totalSentimentScores, frequencyByExperience, lengthOfExperience
 
 def tokenizeText(file):
     try:
@@ -105,6 +110,10 @@ def removeStopWords(normalizedWords):
 def generateWordFrequencies(normalizedWords):
     localCount = normalizedWords.value_counts()
     return localCount.to_dict()
+
+def writeCacheToFile(cache, filename):
+    cachDataFrame = ps.DataFrame([cache])
+    cachDataFrame.to_csv(filename, mode='a+')
 
 
 def writeDfToFile(file1, filename):
