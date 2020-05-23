@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import pandas as ps
 from statistics import mean
-from bs4 import BeautifulSoup as bs
 from nltk import sentiment
 from nltk.stem.wordnet import WordNetLemmatizer
 from nltk.corpus import wordnet
@@ -11,73 +10,49 @@ import nltk
 
 import os
 import sys
-import re
+import logging
+from datetime import datetime
+
 
 
 def run():
     if len(sys.argv) > 1:
-        if len(sys.argv) > 2 and sys.argv[2] is 'true':
-            parseHtml(sys.argv[1])
         runAnalysis(sys.argv[1])
     else:
-        print("Please pass data directory as argument")
+        logging.info("Please pass data directory as argument")
 
 
 def runAnalysis(datadir):
     os.chdir(datadir + '/builtExperiences')
-    sentimentAndMetadata, wordFreq = analyizeText()
-    writeDfToFile(sentimentAndMetadata, wordFreq)
-
-
-def parseHtml(dataDir):
-    print("Parsing html files")
-    os.chdir(dataDir)
-    mkExportDir()
-    experienceFiles = os.listdir()
-    for i in experienceFiles:
-        fileIdMatch = re.search('[0-9]+', i)
-        if fileIdMatch:
-            fileId = fileIdMatch.group(0)
-        else:
-            fileId = i
-        try:
-            fileToParse = open(i, 'r', encoding='utf-8', errors='replace')
-            output = open('./builtExperiences/' + fileId, 'w+')
-            experience = bs(fileToParse, 'html.parser')
-            eBody = experience.body
-            report = eBody.find(class_="report-text-surround")
-            if report:
-                tables = report.find_all('table')
-                for i in tables:
-                    i.decompose()
-                experienceText = report.text
-                output.write(experienceText)
-                output.flush()
-                output.close()
-        except:
-            print("problem opening {}".format(i))
+    textAnalysisFrame = analyizeText()
+    writeDfToFile(textAnalysisFrame, 'textAnalysisFrame.tsv')
 
 
 def analyizeText():
+    logging.info("Beginning analyis")
+    startTime = datetime.now().microsecond
+
     fileList = os.listdir()
     totalSentimentScores = {}
-    totalWordFrequencies = {}
     frequencyByExperience = {}
     lengthOfExperience = {}
-    wordFrequencies = ps.Series()
     for i in fileList:
+        print(".")
         sentTokens, wordTokens = tokenizeText(i)
         if sentTokens and wordTokens:
             totalSentimentScores[i] = getAverageSentimentScore(sentTokens)
             normalizedWords = harmonizeWords(wordTokens)
             normalizedAndFilteredWords = removeStopWords(normalizedWords)
-            totalWordFrequencies, localCount = generateWordFrequencies(normalizedAndFilteredWords, wordFrequencies)
+            localCount = generateWordFrequencies(normalizedAndFilteredWords)
             frequencyByExperience[i] = localCount
             lengthOfExperience[i] = len(localCount)
 
-    return ps.DataFrame([totalSentimentScores, totalWordFrequencies, frequencyByExperience, lengthOfExperience])\
-        , ps.DataFrame([totalWordFrequencies])
+    stopTime = datetime.now().microsecond
+    logging.info("Main analysis done in {}".format(stopTime - startTime))
+    return ps.DataFrame([totalSentimentScores, frequencyByExperience, lengthOfExperience])
 
+def compileTotalFrequencies(wordFrequenciesFrame):
+    print("here I am")
 
 def tokenizeText(file):
     try:
@@ -86,7 +61,7 @@ def tokenizeText(file):
         sentTokens = nltk.sent_tokenize(textStr, 'english')
         wordTokens = nltk.word_tokenize(textStr, 'english')
     except:
-        print("Error reading/tokenizing {}".format(file))
+        logging.error("Error reading/tokenizing {}".format(file))
         sentTokens = ""
         wordTokens = ""
 
@@ -116,27 +91,24 @@ def lemmatizeWords(word):
 
 
 def removeStopWords(normalizedWords):
-    stops = set(stopwords.words('english)'))
-    return normalizedWords.drop(stops)
+    stops = stopwords.words('english')
+    stops.append(".")
+    stops.append(",")
+    stops.append(":")
+    stops.append("..")
+    stops.append("'")
+    stops.append("'s")
+    stopSeries = ps.Series(stops)
+    return normalizedWords[~normalizedWords.isin(stopSeries.values)]
 
 
-def generateWordFrequencies(normalizedWords, wordFrequencies):
+def generateWordFrequencies(normalizedWords):
     localCount = normalizedWords.value_counts()
-    return ps.concat([localCount, wordFrequencies]).sum(axis=1).to_dict(), localCount.to_dict()
+    return localCount.to_dict()
 
 
-def generateStopList():
-    return set(nltk.corpus.stopwords.words("english"))
-
-
-def writeDfToFile(file1, file2):
-    file1.to_csv('sentimentAndMetadata')
-    file2.to_csv('wordByFrequency')
-
-
-def mkExportDir():
-    if not os.path.isdir('./builtExperiences'):
-        os.mkdir('builtExperiences')
+def writeDfToFile(file1, filename):
+    file1.to_csv(filename)
 
 
 def get_wordnet_pos(treebank_tag):
